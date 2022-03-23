@@ -15,6 +15,7 @@ public class BufferMgr {
    private Buffer[] bufferpool;
    private int numAvailable;
    private static final long MAX_TIME = 10000; // 10 seconds
+   private Integer ciao;
    
    private static ReplacementStrategy REPLACEMENT_STRATEGY;
    
