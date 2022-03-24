@@ -3,7 +3,8 @@ package simpledb.buffer;
 import java.util.Arrays;
 import java.util.Comparator;
 
-import simpledb.file.*;
+import simpledb.file.BlockId;
+import simpledb.file.FileMgr;
 import simpledb.log.LogMgr;
 
 /**
@@ -15,9 +16,12 @@ public class BufferMgr {
    private Buffer[] bufferpool;
    private int numAvailable;
    private static final long MAX_TIME = 10000; // 10 seconds
-   private Integer ciao;
    
-   private static ReplacementStrategy REPLACEMENT_STRATEGY;
+   /**** for replacement ******/
+   private static ReplacementStrategy REPLACEMENT_STRATEGY = ReplacementStrategy.NAIVE; // possible values: NAIVE, LRU, CLOCK
+   private static long counter = 0; // a shared clock
+   private int clockPosition = 0; // the position for the clock strategy (Clock)
+   
    
    /**
     * Creates a buffer manager having the specified number 
@@ -59,7 +63,7 @@ public class BufferMgr {
     */
    public synchronized void unpin(Buffer buff) {
       buff.unpin();
-      if (!buff.isPinned()) {
+      if (!buff.isPinned()) { // only if its pin count is now zero
          numAvailable++;
          notifyAll();
       }
@@ -77,8 +81,8 @@ public class BufferMgr {
       try {
          long timestamp = System.currentTimeMillis();
          Buffer buff = tryToPin(blk);
-         while (buff == null && !waitingTooLong(timestamp)) {
-            wait(MAX_TIME);
+         while (buff == null && !waitingTooLong(timestamp)) { // no room available
+            wait(MAX_TIME); // gestione dell'attesa, vedi unpin
             buff = tryToPin(blk);
          }
          if (buff == null)
@@ -126,41 +130,69 @@ public class BufferMgr {
       return null;
    }
    
+  /******** for replacement strategies ********/
+
+   
    private Buffer chooseUnpinnedBuffer() {
-	   if (BufferMgr.REPLACEMENT_STRATEGY == ReplacementStrategy.LRU)
-		   return this.chooseUnpinnedBufferLRU();
-	   else if (BufferMgr.REPLACEMENT_STRATEGY == ReplacementStrategy.CLOCK)
-		   return this.chooseUnpinnedBufferClock();
 	   
-	  //  strategia Naive
-      for (Buffer buff : bufferpool)
-         if (!buff.isPinned())
-         return buff;
-      
+	 /* choose the strategy */
+	 if(BufferMgr.REPLACEMENT_STRATEGY==ReplacementStrategy.LRU)
+		 return this.chooseUnpinnedBufferLRU();
+	 else if(BufferMgr.REPLACEMENT_STRATEGY==ReplacementStrategy.CLOCK)
+		 return this.chooseUnpinnedBufferClock();
+	 
+	  /* else the NAIVE one */
+	  for (Buffer buff : bufferpool)
+	     if (!buff.isPinned())
+	     return buff; 
+
+	   
       return null;
    }
    
    private Buffer chooseUnpinnedBufferLRU() {
-	   
-	   Buffer[] copy = this.bufferpool.clone();
-	   Arrays.sort(copy, Comparator.comparing(Buffer::UnpinTime));
-	   
-	   for (Buffer buff : copy) {
-		   if (!buff.isPinned())
-			   return buff;
+	   	Buffer[] copy = this.bufferpool.clone();
+		Arrays.sort(copy,Comparator.comparing(Buffer::getUnpinTime));
 		   
-		return null; 
-		   
+		  for (Buffer buff : copy)
+			     if (!buff.isPinned())
+			     return buff; 
+		  
+		  return null;
+	}
+  
+
+  private Buffer chooseUnpinnedBufferClock() {
+	   int k=this.clockPosition;
+	   int i=0;
+	   for(i=0;i<this.bufferpool.length;i++) { // iterazione di tante operazioni quanti sono gli elementi del buffer pool
+		   if(!this.bufferpool[k].isPinned()) {
+			   this.clockPosition=(k+1)%bufferpool.length; // start from the next one, next time
+			   return this.bufferpool[k];
+		   }
+		   k=(k+1)%bufferpool.length; 
 	   }
 	   
+	   // do not update k this time
+	   return null;
+  }
+   
+   /******* added support methods ******/
+   protected Buffer[] getBufferPool() {
+	   return this.bufferpool;
+   }
+      
+   protected static long getNextCounter() {
+	   return ++BufferMgr.counter;
    }
    
+   protected static void setReplacementStrategy(ReplacementStrategy s) {
+	   BufferMgr.REPLACEMENT_STRATEGY=s;
+   }
    
+   protected static void alterCounter(long newCounter) {
+	   counter=newCounter;
+   }
    
-   
-   
-   
-   
-   
-   
+
 }

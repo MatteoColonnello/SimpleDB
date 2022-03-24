@@ -8,6 +8,7 @@ public class FileMgr {
    private int blocksize;
    private boolean isNew;
    private Map<String,RandomAccessFile> openFiles = new HashMap<>();
+   private BlockStats stats; // LB
 
    public FileMgr(File dbDirectory, int blocksize) {
       this.dbDirectory = dbDirectory;
@@ -22,6 +23,8 @@ public class FileMgr {
       for (String filename : dbDirectory.list())
          if (filename.startsWith("temp"))
          		new File(dbDirectory, filename).delete();
+      
+      this.stats = new BlockStats();
    }
 
    public synchronized void read(BlockId blk, Page p) {
@@ -29,6 +32,7 @@ public class FileMgr {
          RandomAccessFile f = getFile(blk.fileName());
          f.seek(blk.number() * blocksize);
          f.getChannel().read(p.contents());
+         this.stats.logReadBlock(blk); // LB
       }
       catch (IOException e) {
          throw new RuntimeException("cannot read block " + blk);
@@ -40,6 +44,7 @@ public class FileMgr {
          RandomAccessFile f = getFile(blk.fileName());
          f.seek(blk.number() * blocksize);
          f.getChannel().write(p.contents());
+         this.stats.logWrittenBlock(blk); // LB
       }
       catch (IOException e) {
          throw new RuntimeException("cannot write block" + blk);
@@ -78,6 +83,10 @@ public class FileMgr {
    public int blockSize() {
       return blocksize;
    }
+   
+   public BlockStats getBlockStats() {
+	   return this.stats;
+   }
 
    private RandomAccessFile getFile(String filename) throws IOException {
       RandomAccessFile f = openFiles.get(filename);
@@ -87,5 +96,9 @@ public class FileMgr {
          openFiles.put(filename, f);
       }
       return f;
+   }
+   
+   public void resetStats() {
+	   this.stats.reset();
    }
 }

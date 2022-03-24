@@ -1,6 +1,8 @@
 package simpledb.buffer;
 
-import simpledb.file.*;
+import simpledb.file.BlockId;
+import simpledb.file.FileMgr;
+import simpledb.file.Page;
 import simpledb.log.LogMgr;
 
 /**
@@ -21,8 +23,9 @@ public class Buffer {
    private int txnum = -1;
    private int lsn = -1;
    
-   private long unpinTime;
-   private long loadTime;
+   /****** for strategies *****/
+   private long unpinTimestamp = -1; // last unpin
+   private long loadTimestamp = -1; // last load
 
    public Buffer(FileMgr fm, LogMgr lm) {
       this.fm = fm;
@@ -48,6 +51,10 @@ public class Buffer {
       if (lsn >= 0)
          this.lsn = lsn;
    }
+   
+   public boolean isModified() {
+	   return this.txnum!=-1;
+   }
 
    /**
     * Return true if the buffer is currently pinned
@@ -72,6 +79,7 @@ public class Buffer {
    void assignToBlock(BlockId b) {
       flush();
       blk = b;
+      this.loadTimestamp=BufferMgr.getNextCounter();
       fm.read(blk, contents);
       pins = 0;
    }
@@ -91,6 +99,7 @@ public class Buffer {
     * Increase the buffer's pin count.
     */
    void pin() {
+	  this.unpinTimestamp=-1;
       pins++;
    }
 
@@ -98,9 +107,30 @@ public class Buffer {
     * Decrease the buffer's pin count.
     */
    void unpin() {
+	  this.unpinTimestamp=BufferMgr.getNextCounter(); // for LRU
       pins--;
    }
    
+   /***** for replacement strategies *****/
+
    
-   
+   protected long getUnpinTime() {
+	   return this.unpinTimestamp;
+   }
+   protected void setUnpinTime(long unpinTime) {
+	   this.unpinTimestamp=unpinTime;
+   }
+   protected long getLoadTime() {
+	   return this.loadTimestamp;
+   }
+   protected void setLoadTime(long loadTime) {
+	   this.loadTimestamp=loadTime;
+   }
+   protected int getPins() {
+	   return this.pins;
+   }
+   protected void setPins(int pins) {
+	   this.pins=pins;
+   }
+
 }
